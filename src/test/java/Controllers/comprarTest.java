@@ -1,81 +1,97 @@
 package Controllers;
 
-import static org.mockito.Mockito.*;
-import static org.junit.jupiter.api.Assertions.*;
-
+import DAO.DaoCliente;
+import DAO.DaoPedido;
+import Helpers.ValidadorCookie;
+import Model.Cliente;
+import Model.Pedido;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import javax.servlet.ReadListener;
+import javax.servlet.ServletInputStream;
+import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 
-import javax.servlet.ReadListener;
-import javax.servlet.ServletException;
-import javax.servlet.ServletInputStream;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 public class comprarTest {
 
-    // Subclasse usada apenas no teste para evitar acesso ao banco
-    static class comprarNoDb extends comprar {
-        @Override
-        protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-            // Comportamento mínimo: se não houver cookies escreve "erro"
-            response.setContentType("application/json");
-            response.setCharacterEncoding("UTF-8");
-            try (PrintWriter out = response.getWriter()) {
-                if (request.getCookies() == null) {
-                    out.println("erro");
-                } else {
-                    out.println("ok");
-                }
-            }
+    //injetar mocks
+    public class comprarParaTeste extends comprar {
+        ValidadorCookie validadorMock;
+        DaoPedido daoPedidoMock;
+        DaoCliente daoClienteMock;
+
+        public comprarParaTeste(ValidadorCookie v, DaoPedido dp, DaoCliente dc) {
+            this.validadorMock = v;
+            this.daoPedidoMock = dp;
+            this.daoClienteMock = dc;
         }
+
+        @Override protected ValidadorCookie getValidadorCookie() { return validadorMock; }
+        @Override protected DaoPedido getDaoPedido() { return daoPedidoMock; }
+        @Override protected DaoCliente getDaoCliente() { return daoClienteMock; }
+        
+        //null nos outros pois com o json simples eles não serão chamados
+        @Override protected DAO.DaoLanche getDaoLanche() { return null; }
+        @Override protected DAO.DaoBebida getDaoBebida() { return null; }
     }
 
     @Test
-    public void testDoPost_noCookies_returnsErro() throws Exception {
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
+    public void testeSimples_TudoCerto() throws Exception {
+        // mocks
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        
+        // mocks das classes de Banco e Regra
+        ValidadorCookie validador = mock(ValidadorCookie.class);
+        DaoPedido daoPedido = mock(DaoPedido.class);
+        DaoCliente daoCliente = mock(DaoCliente.class); // <--- Adicionado para não dar erro
 
-        ServletInputStream sis = new ServletInputStream() {
-            private final ByteArrayInputStream bais = new ByteArrayInputStream(new byte[0]);
+        //cookie válido
+        when(validador.validar(any())).thenReturn(true);
+        when(request.getCookies()).thenReturn(new Cookie[]{new Cookie("teste", "teste")});
 
-            @Override
-            public int read() throws IOException {
-                return bais.read();
-            }
+        //cliente existe
+        Cliente clienteFake = new Cliente();
+        clienteFake.setId_cliente(1);
+        when(daoCliente.pesquisaPorID(anyString())).thenReturn(clienteFake);
 
-            @Override
-            public boolean isFinished() {
-                return bais.available() == 0;
-            }
+        //json de Entrada
+        String jsonSimples = "{\"id\": 1}";
+        mockInputStream(request, jsonSimples);
 
-            @Override
-            public boolean isReady() {
-                return true;
-            }
+        //captura de resposta
+        StringWriter textoSaida = new StringWriter();
+        when(response.getWriter()).thenReturn(new PrintWriter(textoSaida));
 
-            @Override
-            public void setReadListener(ReadListener readListener) {
-                // não usado no teste
-            }
+  
+        comprar servlet = new comprarParaTeste(validador, daoPedido, daoCliente);
+        
+        servlet.processRequest(request, response);
+
+        //verifica se tentou salvar o pedido
+        verify(daoPedido, times(1)).salvar(any(Pedido.class));
+    }
+
+    
+    //método para fazer o request fingir que enviou um json
+    
+    private void mockInputStream(HttpServletRequest req, String json) throws IOException {
+        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(json.getBytes());
+        ServletInputStream servletInputStream = new ServletInputStream() {
+            public int read() throws IOException { return byteArrayInputStream.read(); }
+            public boolean isFinished() { return byteArrayInputStream.available() == 0; }
+            public boolean isReady() { return true; }
+            public void setReadListener(ReadListener readListener) {}
         };
-
-        when(req.getInputStream()).thenReturn(sis);
-        when(req.getCookies()).thenReturn(null);
-
-        StringWriter sw = new StringWriter();
-        PrintWriter pw = new PrintWriter(sw);
-        when(resp.getWriter()).thenReturn(pw);
-
-        comprar servlet = new comprarNoDb();
-        servlet.doPost(req, resp);
-
-        pw.flush();
-        String output = sw.toString();
-        assertTrue(output.contains("erro"), "Resposta deve conter 'erro' quando cookies ausentes");
+        when(req.getInputStream()).thenReturn(servletInputStream);
     }
 }
