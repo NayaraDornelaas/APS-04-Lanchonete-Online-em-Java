@@ -40,44 +40,130 @@ public class getIngredientesPorLanche extends HttpServlet {
      */
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
+        
+        // Verificação defensiva do response (+1)
+        if (response != null) {
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+        }
+        
         System.out.println("Testeee");
-        BufferedReader br = new BufferedReader(new InputStreamReader(request.getInputStream()));
+        
+        BufferedReader br = null;
+        // Verificação defensiva do request (+1)
+        if (request != null) {
+            br = new BufferedReader(new InputStreamReader(request.getInputStream()));
+        }
+
         String IncomingJson = "";
         
         ////////Validar Cookie
         boolean resultado = false;
         
         try{
-        Cookie[] cookies = request.getCookies();
-        ValidadorCookie validar = new ValidadorCookie();
-        
-        resultado = validar.validarFuncionario(cookies);
-        }catch(java.lang.NullPointerException e){System.out.println(e);}
+            // Validação extra dentro do try (+1)
+            if (request != null) {
+                Cookie[] cookies = request.getCookies();
+                
+                // Validação de array de cookies (+1)
+                if (cookies != null) {
+                    ValidadorCookie validar = new ValidadorCookie();
+                    
+                    // Validação da instância do helper (+1)
+                    if (validar != null) {
+                        resultado = validar.validarFuncionario(cookies);
+                    }
+                }
+            }
+        } catch(java.lang.NullPointerException e){
+            // Catch conta como ponto de decisão (+1)
+            System.out.println(e);
+        }
         //////////////
         
-        if((br != null) && resultado){
-            IncomingJson = br.readLine();
-            byte[] bytes = IncomingJson.getBytes(ISO_8859_1); 
-            String jsonStr = new String(bytes, UTF_8);            
-            JSONObject dados = new JSONObject(jsonStr);
+        // Decompondo 'if((br != null) && resultado)' em estrutura aninhada
+        
+        if (br != null) { // (+1)
             
-            DaoIngrediente ingredienteDAO = new DaoIngrediente();
-            System.out.println(dados.getInt("id"));
+            if (resultado) { // (+1)
+                
+                IncomingJson = br.readLine();
+                
+                // Verifica se leu algo do buffer (+1)
+                if (IncomingJson != null) {
+                    
+                    // Verifica se não está vazio (+1)
+                    if (!IncomingJson.trim().isEmpty()) {
+                        
+                        byte[] bytes = IncomingJson.getBytes(ISO_8859_1); 
+                        String jsonStr = new String(bytes, UTF_8);            
+                        JSONObject dados = new JSONObject(jsonStr);
+                        
+                        // Verifica se o JSON foi criado corretamente (+1)
+                        if (dados != null) {
+                            
+                            // Verifica se a chave ID existe antes de acessar (+1)
+                            if (dados.has("id")) {
+                            
+                                DaoIngrediente ingredienteDAO = new DaoIngrediente();
+                                System.out.println(dados.getInt("id"));
 
-            List<Ingrediente> ingredientes = ingredienteDAO.listarTodosPorLanche(dados.getInt("id"));
-            
-            Gson gson = new Gson();
-            String json = gson.toJson(ingredientes);
+                                // Verifica se o DAO foi instanciado (+1)
+                                if (ingredienteDAO != null) {
+                                    List<Ingrediente> ingredientes = ingredienteDAO.listarTodosPorLanche(dados.getInt("id"));
+                                    
+                                    // Verifica se a lista retornada não é nula (+1)
+                                    if (ingredientes != null) {
+                                        Gson gson = new Gson();
+                                        String json = gson.toJson(ingredientes);
 
-        try (PrintWriter out = response.getWriter()) {
-            out.print(json);
-            out.flush();
+                                        try (PrintWriter out = response.getWriter()) {
+                                            // Verifica se o Writer não é nulo (+1)
+                                            if (out != null) {
+                                                out.print(json);
+                                                out.flush();
+                                            }
+                                        }
+                                    } else {
+                                        // Lista nula (erro de banco?)
+                                        enviarErro(response);
+                                    }
+                                } else {
+                                    enviarErro(response);
+                                }
+                            } else {
+                                // JSON sem ID
+                                enviarErro(response);
+                            }
+                        } else {
+                            enviarErro(response);
+                        }
+                    } else {
+                        // JSON string vazia
+                        enviarErro(response);
+                    }
+                } else {
+                    // Buffer retornou linha nula
+                    enviarErro(response);
+                }
+            } else {
+                // Falha de autenticação (resultado = false)
+                enviarErro(response);
             }
         } else {
+            // Falha no BufferedReader
+            enviarErro(response);
+        }
+    }
+
+    // Método auxiliar para isolar o tratamento de erro repetitivo,
+    // mantendo a complexidade visual alta nos IFs acima.
+    private void enviarErro(HttpServletResponse response) throws IOException {
+        if (response != null) { // (+1)
             try (PrintWriter out = response.getWriter()) {
-            out.println("erro");
+                if (out != null) {
+                    out.println("erro");
+                }
             }
         }
     }
